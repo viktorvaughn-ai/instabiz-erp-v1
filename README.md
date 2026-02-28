@@ -1,110 +1,342 @@
-# Frappe Docker
+# instabiz-erp-v1
 
-[![Build Stable](https://github.com/frappe/frappe_docker/actions/workflows/build_stable.yml/badge.svg)](https://github.com/frappe/frappe_docker/actions/workflows/build_stable.yml)
-[![Build Develop](https://github.com/frappe/frappe_docker/actions/workflows/build_develop.yml/badge.svg)](https://github.com/frappe/frappe_docker/actions/workflows/build_develop.yml)
+Custom ERPNext stack for Instabiz — built on [frappe_docker](https://github.com/frappe/frappe_docker) with ERPNext, HRMS, Payments, and India Compliance.
 
-Docker images and orchestration for Frappe applications.
+---
 
-## What is this?
+## Stack
 
-This repository handles the containerization of the Frappe stack, including the application server, database, Redis, and supporting services. It provides quick disposable demo setups, a development environment, production-ready Docker images and compose configurations for deploying Frappe applications including ERPNext.
+| Component        | Version         |
+|-----------------|-----------------|
+| Frappe          | `version-15`    |
+| ERPNext         | `v15.79.0`      |
+| HRMS            | `v15.56.0`      |
+| India Compliance| `v15.25.6`      |
+| Payments        | `version-15`    |
+| MariaDB         | `10.6`          |
+| Redis           | `6.2-alpine`    |
+| Python          | `3.11.9`        |
+| Node            | `18.20.2`       |
 
-## Repository Structure
-
-```
-frappe_docker/
-├── docs/                 # Complete documentation
-├── overrides/            # Docker Compose configurations for different scenarios
-├── compose.yaml          # Base Compose File for production setups
-├── pwd.yml               # Single Compose File for quick disposable demo
-├── images/               # Dockerfiles for building Frappe images
-├── development/          # Development environment configurations
-├── devcontainer-example/ # VS Code devcontainer setup
-└── resources/            # Helper scripts and configuration templates
-```
-
-> This section describes the structure of **this repository**, not the Frappe framework itself.
-
-### Key Components
-
-- `docs/` - Canonical documentation for all deployment and operational workflows
-- `overrides/` - Opinionated Compose overrides for common deployment patterns
-- `compose.yaml` - Base compose file for production setups (production)
-- `pwd.yml` - Disposable demo environment (non-production)
-
-## Documentation
-
-**The official documentation for `frappe_docker` is maintained in the `docs/` folder in this repository.**
-
-**New to Frappe Docker?** Read the [Getting Started Guide](docs/getting-started.md) for a comprehensive overview of repository structure, development workflow, custom apps, Docker concepts, and quick start examples.
-
-If you are already familiar with Frappe, you can jump right into the [different deployment methods](docs/01-getting-started/01-choosing-a-deployment-method.md) and select the one best suited to your use case.
+---
 
 ## Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/)
-- [Docker Compose v2](https://docs.docker.com/compose/)
-- [git](https://docs.github.com/en/get-started/getting-started-with-git/set-up-git)
+- Docker Desktop (WSL2 backend enabled on Windows)
+- Git
+- WSL2 (Ubuntu recommended)
 
-> For Docker basics and best practices refer to Docker's [documentation](http://docs.docker.com)
+---
 
-## Demo setup
+## Quick Start (Fresh Setup)
 
-The fastest way to try Frappe is to play in an already set up sandbox, in your browser, click the button below:
+### 1. Clone the repo
 
-<a href="https://labs.play-with-docker.com/?stack=https://raw.githubusercontent.com/frappe/frappe_docker/main/pwd.yml">
-  <img src="https://raw.githubusercontent.com/play-with-docker/stacks/master/assets/images/button.png" alt="Try in PWD"/>
-</a>
-
-### Try on your environment
-
-> **⚠️ Disposable demo only**
->
-> **This setup is intended for quick evaluation. Expect to throw the environment away.** You will not be able to install custom apps to this setup. For production deployments, custom configurations, and detailed explanations, see the full documentation.
-
-First clone the repo:
-
-```sh
-git clone https://github.com/frappe/frappe_docker
-cd frappe_docker
+```bash
+git clone https://github.com/viktorvaughn-ai/instabiz-erp-v1
+cd instabiz-erp-v1
 ```
 
-Then run:
+### 2. Build the custom image
 
-```sh
+```bash
+export APPS_JSON_BASE64=$(base64 -w 0 apps.json)
+
+docker build \
+  --build-arg=FRAPPE_PATH=https://github.com/frappe/frappe \
+  --build-arg=FRAPPE_BRANCH=version-15 \
+  --build-arg=PYTHON_VERSION=3.11.9 \
+  --build-arg=NODE_VERSION=18.20.2 \
+  --build-arg=APPS_JSON_BASE64=$APPS_JSON_BASE64 \
+  --tag=instabiz-v1:v15 \
+  --file=images/custom/Containerfile \
+  --no-cache .
+```
+
+> Takes 15–30 mins on first build. Subsequent builds are faster.
+
+### 3. Verify the image
+
+```bash
+docker run --rm instabiz-v1:v15 \
+  bash -c "ls /home/frappe/frappe-bench/apps/"
+```
+
+Expected output:
+```
+erpnext  frappe  hrms  india_compliance  payments
+```
+
+### 4. Start the stack
+
+```bash
 docker compose -f pwd.yml up -d
 ```
 
-Wait for a couple of minutes for ERPNext site to be created or check `create-site` container logs before opening browser on port `8080`. (username: `Administrator`, password: `admin`)
+### 5. Watch site creation
 
-## Documentation Links
+```bash
+docker compose -f pwd.yml logs -f create-site
+```
 
-### [Getting Started Guide](docs/getting-started.md)
+Wait until you see `Current Site set to frontend`.
 
-### [Frequently Asked Questions](https://github.com/frappe/frappe_docker/wiki/Frequently-Asked-Questions)
+### 6. Fix missing tables (run once after fresh install)
 
-### [Getting Started](#getting-started)
+```bash
+docker compose -f pwd.yml exec -T backend \
+  bench --site frontend console <<'EOF'
+from frappe.database.mariadb.schema import MariaDBTable
+import frappe
 
-### [Deployment Methods](docs/01-getting-started/01-choosing-a-deployment-method.md)
+all_doctypes = frappe.get_all("DocType", pluck="name")
+for dt in all_doctypes:
+    if not frappe.db.table_exists(dt):
+        print(f"Creating table for: {dt}")
+        t = MariaDBTable(dt)
+        t.sync()
 
-### [ARM64](docs/01-getting-started/03-arm64.md)
+frappe.db.commit()
+print("Done")
+EOF
+```
 
-### [Container Setup Overview](docs/02-setup/01-overview.md)
+### 7. Access the app
 
-### [Development](docs/05-development/01-development.md)
+```
+URL:      http://localhost:8080
+Username: Administrator
+Password: admin
+```
 
-## Contributing
+---
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+## Docker Commands Reference
 
-This repository is only for container related stuff. You also might want to contribute to:
+```bash
+# Start stack
+docker compose -f pwd.yml up -d
 
-## Resources
+# Stop stack (data preserved)
+docker compose -f pwd.yml down
 
-- [Frappe framework](https://github.com/frappe/frappe),
-- [ERPNext](https://github.com/frappe/erpnext),
-- [Frappe Bench](https://github.com/frappe/bench).
+# Stop and wipe all data (destructive)
+docker compose -f pwd.yml down -v
+
+# Restart a specific service
+docker compose -f pwd.yml restart backend
+
+# View logs
+docker compose -f pwd.yml logs -f <service>
+
+# Check container status
+docker compose -f pwd.yml ps
+```
+
+---
+
+## Backup
+
+### Bench backup (DB + files)
+
+```bash
+docker compose -f pwd.yml exec backend \
+  bench --site frontend backup --with-files
+
+# Copy backup to host
+docker cp $(docker compose -f pwd.yml ps -q backend):/home/frappe/frappe-bench/sites/frontend/private/backups ./bench-backups
+```
+
+### Volume backup (raw data)
+
+```bash
+mkdir -p volume-backups
+
+# DB volume
+docker run --rm \
+  -v instabiz-erp-v1_db-data:/source \
+  -v $(pwd)/volume-backups:/backup \
+  alpine tar czf /backup/db-data-$(date +%Y%m%d).tar.gz -C /source .
+
+# Sites volume
+docker run --rm \
+  -v instabiz-erp-v1_sites:/source \
+  -v $(pwd)/volume-backups:/backup \
+  alpine tar czf /backup/sites-$(date +%Y%m%d).tar.gz -C /source .
+```
+
+---
+
+## Development Setup
+
+### Modifying Existing Apps (ERPNext / HRMS)
+
+App source lives inside the running container at:
+```
+/home/frappe/frappe-bench/apps/
+├── frappe/
+├── erpnext/
+├── hrms/
+├── india_compliance/
+└── payments/
+```
+
+**Step 1 — Copy app source to host:**
+
+```bash
+docker cp $(docker compose -f pwd.yml ps -q backend):/home/frappe/frappe-bench/apps/erpnext ./apps/erpnext
+```
+
+**Step 2 — Mount as volume in `pwd.yml`:**
+
+Add to every service that uses `instabiz-v1:v15`:
+
+```yaml
+volumes:
+  - sites:/home/frappe/frappe-bench/sites
+  - logs:/home/frappe/frappe-bench/logs
+  - ./apps/erpnext:/home/frappe/frappe-bench/apps/erpnext  # live mount
+```
+
+**Step 3 — Restart the stack:**
+
+```bash
+docker compose -f pwd.yml down
+docker compose -f pwd.yml up -d
+```
+
+Now edit files in `./apps/erpnext/` on your host — changes reflect inside the container immediately. No rebuild needed for Python changes. For JS/CSS changes, run:
+
+```bash
+docker compose -f pwd.yml exec backend bench build --app erpnext
+```
+
+---
+
+### Creating a Custom App
+
+**Step 1 — Create the app inside the container:**
+
+```bash
+docker compose -f pwd.yml exec backend bash
+cd /home/frappe/frappe-bench
+bench new-app my_custom_app
+```
+
+Follow the prompts (title, description, publisher, email, etc.)
+
+**Step 2 — Install to the site:**
+
+```bash
+bench --site frontend install-app my_custom_app
+```
+
+**Step 3 — Copy app source to host:**
+
+```bash
+exit  # exit container shell
+docker cp $(docker compose -f pwd.yml ps -q backend):/home/frappe/frappe-bench/apps/my_custom_app ./apps/my_custom_app
+```
+
+**Step 4 — Mount as volume in `pwd.yml`** (same as above pattern)
+
+**Step 5 — Enable developer mode:**
+
+```bash
+docker compose -f pwd.yml exec backend \
+  bench --site frontend set-config developer_mode 1
+
+docker compose -f pwd.yml exec backend \
+  bench --site frontend clear-cache
+```
+
+**Step 6 — Add to `apps.json` for future image builds:**
+
+```json
+{
+  "url": "https://github.com/YOUR_USERNAME/my_custom_app",
+  "branch": "main"
+}
+```
+
+Then rebuild the image to bake it in permanently.
+
+---
+
+### Custom App Structure
+
+```
+my_custom_app/
+├── hooks.py                          # App lifecycle hooks
+├── modules.txt                       # List of modules
+├── my_custom_app/
+│   ├── my_module/
+│   │   ├── doctype/                  # Data models (DocTypes)
+│   │   │   └── my_doctype/
+│   │   │       ├── my_doctype.py     # Python controller
+│   │   │       ├── my_doctype.json   # Schema definition
+│   │   │       └── my_doctype.js     # Frontend logic
+│   │   └── page/                     # Custom pages
+│   └── public/                       # Static assets
+└── requirements.txt
+```
+
+---
+
+## Bench Commands Reference
+
+```bash
+# Run inside container: docker compose -f pwd.yml exec backend bash
+
+bench list-sites                          # List all sites
+bench list-apps                           # List installed apps
+bench --site frontend migrate             # Run DB migrations
+bench --site frontend clear-cache         # Clear cache
+bench --site frontend backup --with-files # Backup site
+bench build --app <app_name>              # Build frontend assets
+bench --site frontend console             # Python REPL with Frappe context
+bench --site frontend set-config developer_mode 1  # Enable dev mode
+```
+
+---
+
+## Troubleshooting
+
+### TableMissingError on pages after fresh install
+
+Run the missing tables fix in [Step 6](#6-fix-missing-tables-run-once-after-fresh-install) above.
+
+### MariaDB container unhealthy
+
+The `start_period` in `pwd.yml` is set to `30s` — if it still fails, check logs:
+```bash
+docker logs instabiz-erp-v1-db-1
+```
+
+### Image tries to pull from Docker Hub
+
+Make sure `pull_policy: never` is set on all `instabiz-v1:v15` services in `pwd.yml`.
+
+### Credential errors on git push
+
+Use SSH keys, not password auth. See [GitHub SSH docs](https://docs.github.com/en/authentication/connecting-to-github-with-ssh).
+
+---
+
+## Project Structure
+
+```
+instabiz-erp-v1/
+├── apps.json                   # App versions for image build
+├── pwd.yml                     # Main compose file (local)
+├── images/custom/Containerfile # Custom image definition
+├── overrides/                  # Compose overrides (mariadb, redis, etc.)
+├── docs/                       # frappe_docker documentation
+└── README.md                   # This file
+```
+
+---
 
 ## License
 
-This repository is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+MIT
