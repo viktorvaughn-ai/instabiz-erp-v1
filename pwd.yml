@@ -1,6 +1,7 @@
 services:
   backend:
-    image: frappe/erpnext:v16.7.3
+    image: instabiz-v1:v15
+    pull_policy: never
     networks:
       - frappe_network
     deploy:
@@ -16,7 +17,8 @@ services:
       MARIADB_ROOT_PASSWORD: admin
 
   configurator:
-    image: frappe/erpnext:v16.7.3
+    image: instabiz-v1:v15
+    pull_policy: never
     networks:
       - frappe_network
     deploy:
@@ -45,7 +47,8 @@ services:
       - logs:/home/frappe/frappe-bench/logs
 
   create-site:
-    image: frappe/erpnext:v16.7.3
+    image: instabiz-v1:v15
+    pull_policy: never
     networks:
       - frappe_network
     deploy:
@@ -75,7 +78,7 @@ services:
           fi
         done;
         echo "sites/common_site_config.json found";
-        bench new-site --mariadb-user-host-login-scope='%' --admin-password=admin --db-root-username=root --db-root-password=admin --install-app erpnext --set-default frontend;
+        bench new-site --mariadb-user-host-login-scope='%' --admin-password=admin --db-root-username=root --db-root-password=admin --install-app erpnext --install-app payments --install-app hrms --install-app india_compliance --set-default frontend;
 
   db:
     image: mariadb:10.6
@@ -85,6 +88,7 @@ services:
       test: mysqladmin ping -h localhost --password=admin
       interval: 1s
       retries: 20
+      start_period: 30s
     deploy:
       restart_policy:
         condition: on-failure
@@ -100,7 +104,8 @@ services:
       - db-data:/var/lib/mysql
 
   frontend:
-    image: frappe/erpnext:v16.7.3
+    image: instabiz-v1:v15
+    pull_policy: never
     networks:
       - frappe_network
     depends_on:
@@ -126,7 +131,8 @@ services:
       - "8080:8080"
 
   queue-long:
-    image: frappe/erpnext:v16.7.3
+    image: instabiz-v1:v15
+    pull_policy: never
     networks:
       - frappe_network
     deploy:
@@ -145,7 +151,8 @@ services:
       FRAPPE_REDIS_QUEUE: redis://redis-queue:6379
 
   queue-short:
-    image: frappe/erpnext:v16.7.3
+    image: instabiz-v1:v15
+    pull_policy: never
     networks:
       - frappe_network
     deploy:
@@ -182,7 +189,8 @@ services:
         condition: on-failure
 
   scheduler:
-    image: frappe/erpnext:v16.7.3
+    image: instabiz-v1:v15
+    pull_policy: never
     networks:
       - frappe_network
     deploy:
@@ -196,7 +204,8 @@ services:
       - logs:/home/frappe/frappe-bench/logs
 
   websocket:
-    image: frappe/erpnext:v16.7.3
+    image: instabiz-v1:v15
+    pull_policy: never
     networks:
       - frappe_network
     deploy:
